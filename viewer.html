@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision Tree</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --ink: #1f1f22; --muted: #6d6c70; --faint: #a3a1a6;
+  --line: #e4e1db; --hover: #f0eee9; --select: #e9e6ff;
+  --goal: #5a48d0; --q: #0a78a0; --finding: #2d7a3a; --decision: #b25f0a;
+  --wrong: #c2372c; --suspect: #c98f00; --suspect-bg: #fdf6e3; --next: #0a78a0; --next-bg: #e8f4f8;
+  --flash: #fff1b8;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17171a; --panel: #1f1f23; --ink: #e9e8ec; --muted: #9d9ba3; --faint: #66646b;
+    --line: #313036; --hover: #29282d; --select: #2d2a4a;
+    --goal: #a497ff; --q: #5cc3e6; --finding: #7ccb88; --decision: #f0a356;
+    --wrong: #ff7a6e; --suspect: #e8b535; --suspect-bg: #2b2616; --next: #5cc3e6; --next-bg: #16303a;
+    --flash: #4a4220;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+button { font: inherit; color: inherit; }
+
+/* header + tabs */
+header { background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; }
+.bar { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 10px 16px 0; }
+.bar h1 { font-size: 15px; margin: 0; }
+.bar .src { color: var(--muted); font: 12px var(--mono); }
+.bar .spacer { flex: 1; }
+.bar label { color: var(--muted); font-size: 13px; user-select: none; }
+nav.tabs { display: flex; gap: 2px; padding: 8px 12px 0; overflow-x: auto; }
+.tab { border: 0; background: none; padding: 7px 12px 8px; border-bottom: 2px solid transparent;
+  color: var(--muted); cursor: pointer; white-space: nowrap; font-size: 13px; }
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); border-bottom-color: var(--goal); font-weight: 600; }
+.tab .badge { margin-left: 5px; font: 600 11px var(--mono); color: var(--suspect); }
+.tab .badge.unconf { color: var(--faint); }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; align-items: start; }
+main.detail-open { grid-template-columns: minmax(0, 1fr) minmax(360px, 46%); }
+main.wide { grid-template-columns: 1fr; }
+@media (max-width: 900px) { main, main.detail-open { grid-template-columns: 1fr; } }
+aside { position: sticky; top: 104px; max-height: calc(100vh - 120px); overflow-y: auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 6px; }
+
+/* goal heading + view toggle */
+.goalhead { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.goalhead .t { flex: 1; }
+.goalhead h3 { margin: 0; font-size: 18px; }
+.goalhead .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex: none; }
+.seg button { border: 0; background: var(--panel); padding: 4px 12px; cursor: pointer; font-size: 13px; color: var(--muted); }
+.seg button.on { background: var(--ink); color: var(--bg); }
+
+/* tree */
+ul.tree, ul.tree ul { list-style: none; margin: 0; padding: 0; }
+ul.tree ul { margin-left: 11px; padding-left: 12px; border-left: 1px solid var(--line); }
+li.suspect > ul { border-left: 2px solid var(--suspect); }
+li.wrong > ul { border-left: 2px solid var(--wrong); }
+li.collapsed > ul { display: none; }
+.row { display: flex; align-items: baseline; gap: 6px; padding: 3px 6px; border-radius: 5px; cursor: pointer; }
+.row:hover { background: var(--hover); }
+.row.selected { background: var(--select); }
+.row.flash { background: var(--flash); }
+.caret { width: 14px; flex: none; color: var(--faint); cursor: pointer; text-align: center; font-size: 10px; }
+.caret.none { cursor: default; }
+.kind { flex: none; font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em;
+  padding: 3px 5px; border-radius: 4px; border: 1px solid currentColor; }
+.k-goal { color: var(--goal); } .k-q { color: var(--q); }
+.k-finding { color: var(--finding); } .k-decision { color: var(--decision); }
+.k-unknown { color: var(--wrong); border-style: dashed; }
+.name { flex: none; font: 12px var(--mono); color: var(--muted); }
+.body { min-width: 0; flex: 1; }
+.title { overflow-wrap: anywhere; }
+.when { flex: none; color: var(--faint); font: 11px var(--mono); }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 4px; vertical-align: 1px; }
+.chip { font: 11px/1.4 var(--mono); padding: 0 6px; border-radius: 10px; border: 1px solid var(--line);
+  color: var(--muted); background: var(--bg); white-space: nowrap; text-decoration: none; cursor: default; }
+a.chip, .chip.copy { cursor: pointer; }
+a.chip:hover, .chip.copy:hover { color: var(--ink); border-color: var(--muted); }
+.chip.pr-merged { color: var(--goal); } .chip.pr-closed { color: var(--faint); text-decoration: line-through; }
+.chip.proof { color: var(--finding); border-color: currentColor; }
+.status { font: 600 11px/1.4 var(--mono); padding: 0 6px; border-radius: 10px; }
+.s-done { color: var(--finding); } .s-parked { color: var(--muted); background: var(--hover); }
+.s-wrong { color: #fff; background: var(--wrong); } .s-kept { color: var(--finding); border: 1px solid currentColor; }
+.recheck { font: 600 11px/1.4 var(--mono); color: var(--suspect); }
+li.wrong > .row .title { text-decoration: line-through; text-decoration-color: var(--wrong); }
+li.done > .row .title, li.parked > .row .title { color: var(--muted); }
+li.suspect > .row:not(.selected) { background: var(--suspect-bg); }
+li.unconf > .row { opacity: .6; border: 1px dashed var(--faint); }
+li.unconf > .row:hover, li.unconf > .row.selected { opacity: 1; }
+.notes { margin: 1px 0 2px 26px; }
+.note { color: var(--muted); font-size: 13px; padding: 0 6px; overflow-wrap: anywhere; }
+.note::before { content: "› "; color: var(--faint); }
+.note.unconf { font-style: italic; opacity: .75; }
+.note.next { color: var(--next); }
+.note.next::before { content: "→ "; color: var(--next); }
+a.ref { color: inherit; text-decoration: underline dotted; cursor: pointer; }
+code { font: 12px var(--mono); background: var(--hover); padding: 0 3px; border-radius: 3px; }
+.hide-unconf li.unconf, .hide-unconf .log-item.unconf { display: none; }
+
+/* log */
+.day { font: 600 12px var(--mono); color: var(--muted); margin: 16px 0 6px; }
+.day:first-child { margin-top: 0; }
+.log-item { display: grid; grid-template-columns: 44px auto 1fr; gap: 2px 8px; align-items: baseline;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.log-item:hover { background: var(--hover); }
+.log-item.selected { background: var(--select); }
+.log-item.unconf { opacity: .6; }
+.log-item .time { font: 11px var(--mono); color: var(--faint); }
+.log-item .crumbs { grid-column: 3; color: var(--faint); font: 11px var(--mono); }
+.log-item.wrong .title { text-decoration: line-through; text-decoration-color: var(--wrong); }
+.log-item.suspect { box-shadow: inset 2px 0 var(--suspect); }
+.undated { color: var(--faint); font-size: 13px; margin-top: 16px; }
+
+/* where was I */
+.where .last { font-size: 13px; }
+.where .last .ago { color: var(--muted); font: 12px var(--mono); }
+.where ul { list-style: none; padding: 0; margin: 0; }
+.where li { padding: 3px 0; font-size: 13px; border-top: 1px solid var(--line); }
+.where li:first-child { border-top: 0; }
+.where .because { color: var(--wrong); font-size: 12px; margin: 6px 0 2px; }
+.where .empty { color: var(--faint); font-size: 13px; }
+.next-box { background: var(--next-bg); border-radius: 6px; padding: 8px 10px; margin: 8px 0 4px; }
+.next-box div { color: var(--next); font-size: 13px; }
+.next-box div::before { content: "→ "; }
+.next-box .from { color: var(--muted); font: 11px var(--mono); }
+.go { font: 12px var(--mono); cursor: pointer; text-decoration: underline dotted; }
+.resume { display: inline-block; margin-top: 6px; }
+.errors li { color: var(--wrong); font: 12px var(--mono); }
+
+/* overview */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; cursor: pointer; }
+.card:hover { border-color: var(--muted); }
+.card h3 { margin: 0 0 2px; font-size: 15px; }
+.card .meta { color: var(--muted); font: 12px var(--mono); }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pill { font: 600 11px var(--mono); padding: 1px 7px; border-radius: 10px; background: var(--hover); color: var(--muted); }
+.pill.warn { background: var(--suspect-bg); color: var(--suspect); }
+
+/* details */
+.detail .crumbs { font: 12px var(--mono); color: var(--muted); margin-bottom: 8px; }
+.detail .crumbs span + span::before { content: " › "; color: var(--faint); }
+.detail .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.detail h3 { font-size: 17px; margin: 6px 0 8px; }
+.detail .close { margin-left: auto; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; }
+.detail .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.detail .actions button { border: 1px solid var(--line); background: var(--bg); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.detail .kids li { cursor: pointer; }
+.md { font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.md h1 { font-size: 16px; margin: 0 0 8px; }
+.md h2 { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--ink); margin: 16px 0 6px; }
+.md h3 { font-size: 13px; margin: 12px 0 4px; }
+.md p, .md ul, .md ol { margin: 6px 0; }
+.md pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md a { color: var(--q); }
+.md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+.md blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.nodetail { color: var(--muted); font-size: 13px; background: var(--bg); border: 1px dashed var(--line); border-radius: 6px; padding: 10px; }
+
+#drop { margin: 40px auto; max-width: 520px; padding: 40px 24px; text-align: center;
+  border: 2px dashed var(--line); border-radius: 12px; color: var(--muted); }
+#drop.over { border-color: var(--goal); color: var(--ink); }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink);
+  color: var(--bg); padding: 6px 12px; border-radius: 6px; font: 12px var(--mono); opacity: 0;
+  transition: opacity .2s; pointer-events: none; z-index: 5; }
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>Decision tree</h1>
+    <span class="src" id="src"></span>
+    <span class="spacer"></span>
+    <label><input type="checkbox" id="hideDone"> Collapse done</label>
+    <label><input type="checkbox" id="showUnconf" checked> Show unconfirmed (?)</label>
+  </div>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<div id="drop" hidden>
+  <p>Drop a tree <code>.md</code> file here, or pick one.</p>
+  <input type="file" id="file" accept=".md,.txt">
+  <p style="font-size:12px">Tip: <code>python3 dt.py serve path/to/tree.md</code> reloads as files change and shows write-ups from <code>details/</code>.</p>
+</div>
+<main id="main" hidden>
+  <section id="view"></section>
+  <aside id="side"></aside>
+</main>
+<div id="toast"></div>
+<script>
+const KINDS = { goal: 'goal', q: 'q', question: 'q', finding: 'finding', decision: 'decision' };
+const STATUSES = 'open|done|parked|wrong|kept';
+
+// ---------- parsing ----------
+
+function parseAt(s) {
+  const d = new Date(s.trim().replace(' ', 'T'));
+  return isNaN(d) ? null : d;
+}
+
+function parseNote(text) {
+  const unconf = /^\?\s/.test(text);
+  if (unconf) text = text.replace(/^\?\s+/, '');
+  const next = /^next:\s*/i.test(text);
+  return { text: next ? text.replace(/^next:\s*/i, '') : text, unconf, next };
+}
+
+function parseNode(body, line) {
+  const n = { line, unconf: false, status: 'open', attachments: [], notes: [], children: [], at: null };
+  if (/^\?\s/.test(body)) { n.unconf = true; body = body.replace(/^\?\s+/, ''); }
+  body = body.replace(/\{(\w+):\s*([^}]*)\}/g, (_, k, v) => {
+    k = k.toLowerCase();
+    if (k === 'at') n.at = parseAt(v); else n.attachments.push({ k, v: v.trim() });
+    return ' ';
+  });
+  body = body.replace(new RegExp(`(^|\\s)#(${STATUSES})\\b`, 'gi'), (_, sp, s) => { n.status = s.toLowerCase(); return sp; });
+  body = body.trim().replace(/\s{2,}/g, ' ');
+  const m = body.match(/^(\w+)\s+([a-z0-9][a-z0-9-]*)\s*:\s*(.*)$/i);
+  if (m && KINDS[m[1].toLowerCase()]) {
+    n.kind = KINDS[m[1].toLowerCase()]; n.name = m[2]; n.title = m[3];
+  } else {
+    n.kind = 'unknown'; n.name = null; n.title = body;
+    n.error = 'expected "<kind> <name>: <title>"';
+  }
+  return n;
+}
+
+function parse(text) {
+  const root = { children: [] };
+  const stack = [{ ind: -1, node: root }];
+  const byName = new Map(), errors = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/\t/g, '  ');
+    if (!line.trim()) return;
+    let m = line.match(/^(\s*)[-*]\s+(.*)$/);
+    if (m) {
+      const ind = m[1].length;
+      while (stack[stack.length - 1].ind >= ind) stack.pop();
+      const parent = stack[stack.length - 1].node;
+      const n = parseNode(m[2], i + 1);
+      n.parent = parent === root ? null : parent;
+      parent.children.push(n);
+      stack.push({ ind, node: n });
+      if (n.error) errors.push(`line ${i + 1}: ${n.error}`);
+      if (n.name) {
+        if (byName.has(n.name)) errors.push(`line ${i + 1}: duplicate name "${n.name}"`);
+        else byName.set(n.name, n);
+      }
+      return;
+    }
+    m = line.match(/^(\s*)>\s?(.*)$/);
+    if (m) {
+      const ind = m[1].length;
+      const owner = [...stack].reverse().find(s => s.ind < ind && s.node !== root);
+      if (owner) { owner.node.notes.push(parseNote(m[2])); return; }
+    }
+    if (/^\s*(#|<!--)/.test(line)) return; // headings and comments
+    errors.push(`line ${i + 1}: not a node or note: "${line.trim().slice(0, 60)}"`);
+  });
+  for (const top of root.children) annotate([top], { repo: null, wrong: null, top });
+  return { roots: root.children, byName, errors };
+}
+
+// Inherit repo, record the top-level node (tab), and find nodes under something marked wrong.
+function annotate(nodes, ctx) {
+  for (const n of nodes) {
+    const repo = n.attachments.find(a => a.k === 'repo');
+    n.repo = repo ? repo.v : ctx.repo;
+    n.top = ctx.top;
+    n.wrongAncestor = ctx.wrong;
+    n.suspect = !!ctx.wrong && n.status !== 'wrong' && n.status !== 'kept';
+    let wrong = ctx.wrong;
+    if (n.status === 'wrong') wrong = n;
+    if (n.status === 'kept') wrong = null;
+    annotate(n.children, { repo: n.repo, wrong, top: ctx.top });
+  }
+}
+
+function walk(nodes, fn) { for (const n of nodes) { fn(n); walk(n.children, fn); } }
+function flatten(n) { const all = []; walk([n], x => all.push(x)); return all; }
+const keyOf = n => n.name || `line:${n.line}`;
+function findByKey(key) {
+  if (state.tree.byName.has(key)) return state.tree.byName.get(key);
+  let found = null; walk(state.tree.roots, n => { if (keyOf(n) === key) found = n; }); return found;
+}
+function ancestors(n) { const a = []; for (let p = n.parent; p; p = p.parent) a.unshift(p); return a; }
+const needsRecheck = n => n.suspect && (n.kind === 'decision' || n.attachments.some(a => a.k === 'pr'));
+
+// Everything the "where was I" views need for one top-level node.
+function summarize(top) {
+  const all = flatten(top);
+  const dated = all.filter(n => n.at).sort((a, b) => b.at - a.at);
+  const hasSession = n => n.attachments.some(a => a.k === 'session');
+  const recheck = new Map();
+  for (const n of all.filter(needsRecheck)) {
+    if (!recheck.has(n.wrongAncestor)) recheck.set(n.wrongAncestor, []);
+    recheck.get(n.wrongAncestor).push(n);
+  }
+  return {
+    all, dated,
+    last: dated[0] || null,
+    sessionNode: dated.find(hasSession) || all.find(hasSession) || null,
+    next: all.flatMap(n => n.notes.filter(x => x.next).map(x => ({ n, ...x }))),
+    recheck,
+    recheckCount: all.filter(needsRecheck).length,
+    open: all.filter(n => n.kind === 'q' && n.status === 'open' && !n.unconf),
+    unconf: all.filter(n => n.unconf || n.notes.some(x => x.unconf)),
+    parked: all.filter(n => n.status === 'parked'),
+  };
+}
+
+// ---------- formatting helpers ----------
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/@([a-z0-9][a-z0-9-]*)/gi, (all, name) =>
+      state.tree.byName.has(name) ? `<a class="ref" data-go="${name}">@${name}</a>` : all);
+}
+
+const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
+const pad = x => String(x).padStart(2, '0');
+const fmtDay = d => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function ago(d) {
+  const days = Math.floor((Date.now() - d) / 86400000);
+  if (days < 1) { const h = Math.floor((Date.now() - d) / 3600000); return h < 1 ? 'just now' : `${h}h ago`; }
+  return days < 30 ? `${days}d ago` : fmtDay(d);
+}
+
+function prChip(v, repo) {
+  if (/^https?:\/\//.test(v)) return `<a class="chip" href="${esc(v)}" target="_blank">PR</a>`;
+  const m = v.match(/^(?:([\w.-]+\/[\w.-]+)#)?#?(\d+)(?:\s+(\w+))?/);
+  if (!m) return `<span class="chip">pr:${esc(v)}</span>`;
+  const r = m[1] || repo, st = (m[3] || '').toLowerCase();
+  const label = `PR #${m[2]}${st ? ' · ' + esc(st) : ''}`;
+  const cls = `chip${st ? ' pr-' + esc(st) : ''}`;
+  return r ? `<a class="${cls}" href="https://github.com/${esc(r)}/pull/${m[2]}" target="_blank">${label}</a>`
+           : `<span class="${cls}">${label}</span>`;
+}
+
+function resumeCmd(v) {
+  // {session:<id> <dir>}, or {session:codex:<id> <dir>}
+  const [id, dir] = v.split(/\s+/);
+  const codex = id.startsWith('codex:'), sid = codex ? id.slice(6) : id;
+  const cmd = (dir ? `cd ${dir} && ` : '') + (codex ? `codex resume ${sid}` : `claude --resume ${sid}`);
+  return { cmd, label: `${codex ? 'codex' : 'session'} ${sid.slice(0, 8)}${dir ? ' · ' + dir.split('/').pop() : ''}` };
+}
+
+function chip(a, n) {
+  switch (a.k) {
+    case 'pr': return prChip(a.v, n.repo);
+    case 'session': { const r = resumeCmd(a.v); return `<span class="chip copy" data-copy="${esc(r.cmd)}" title="${esc(r.cmd)}">${esc(r.label)}</span>`; }
+    case 'branch': return `<span class="chip copy" data-copy="git switch ${esc(a.v)}" title="Copy switch command">⎇ ${esc(a.v)}</span>`;
+    case 'repo': return `<span class="chip">${esc(a.v)}</span>`;
+    case 'link': case 'url': return `<a class="chip" href="${esc(a.v)}" target="_blank">link</a>`;
+    default: return `<span class="chip">${esc(a.k)}:${esc(a.v)}</span>`;
+  }
+}
+
+const hasDetail = n => n.name && state.details.has(n.name);
+const statusPill = n => n.status !== 'open' ? `<span class="status s-${n.status}">${n.status}</span>` : '';
+const recheckTag = n => needsRecheck(n) ? `<span class="recheck" title="Under @${esc(n.wrongAncestor.name || '')}, which is wrong">⚠ re-check</span>` : '';
+const chipsFor = n => {
+  const parts = n.attachments.filter(a => a.k !== 'repo' || !n.parent).map(a => chip(a, n));
+  if (hasDetail(n)) parts.unshift(`<span class="chip proof">write-up</span>`);
+  return parts.length ? `<span class="chips">${parts.join('')}</span>` : '';
+};
+const goLink = n => `<span class="go" data-go="${esc(keyOf(n))}">${esc(n.name || 'line ' + n.line)}</span>`;
+const kindTag = n => `<span class="kind k-${n.kind}">${n.unconf ? '? ' : ''}${n.kind}</span>`;
+
+// ---------- tree view ----------
+
+function isCollapsed(n) {
+  const k = keyOf(n);
+  if (state.expanded.has(k)) return false;
+  if (state.collapsed.has(k)) return true;
+  return state.hideDone && n.status === 'done' && n.children.length > 0;
+}
+
+function notesHtml(n, style = '') {
+  if (!n.notes.length) return '';
+  return `<div class="notes" style="${style}">${n.notes.map(x =>
+    `<div class="note${x.unconf ? ' unconf' : ''}${x.next ? ' next' : ''}">${x.unconf ? '? ' : ''}${x.next ? 'next: ' : ''}${inline(x.text)}</div>`).join('')}</div>`;
+}
+
+function renderNode(n) {
+  const cls = [n.status, n.suspect && 'suspect', n.unconf && 'unconf', isCollapsed(n) && 'collapsed'].filter(Boolean).join(' ');
+  const caret = n.children.length
+    ? `<span class="caret" data-toggle="${esc(keyOf(n))}">${isCollapsed(n) ? '▶' : '▼'}</span>`
+    : `<span class="caret none">·</span>`;
+  const kids = n.children.length ? `<ul>${n.children.map(renderNode).join('')}</ul>` : '';
+  return `<li class="${cls}" id="n-${esc(keyOf(n))}">
+    <div class="row${state.selected === keyOf(n) ? ' selected' : ''}" data-select="${esc(keyOf(n))}">${caret}
+      ${kindTag(n)}
+      ${n.name ? `<span class="name">${esc(n.name)}</span>` : ''}
+      <span class="body"><span class="title">${inline(n.title)}</span> ${statusPill(n)} ${recheckTag(n)}${chipsFor(n)}</span>
+      ${n.at ? `<span class="when">${fmtDay(n.at)}</span>` : ''}
+    </div>${notesHtml(n)}${kids}</li>`;
+}
+
+function renderTree(top) {
+  return `<ul class="tree">${top.children.map(renderNode).join('')}</ul>`;
+}
+
+// ---------- log view ----------
+
+function renderLog(top) {
+  const s = summarize(top);
+  const items = s.dated.filter(n => n !== top);
+  let html = '', lastDay = null;
+  for (const n of items) {
+    const day = dayKey(n.at);
+    if (day !== lastDay) { html += `<div class="day">${fmtDay(n.at)} · ${n.at.getFullYear()}</div>`; lastDay = day; }
+    const crumbs = ancestors(n).slice(1).map(a => esc(a.name || '…')).join(' › ');
+    const cls = ['log-item', n.status, n.suspect && 'suspect', n.unconf && 'unconf', state.selected === keyOf(n) && 'selected'].filter(Boolean).join(' ');
+    html += `<div class="${cls}" data-select="${esc(keyOf(n))}">
+      <span class="time">${fmtTime(n.at)}</span>
+      ${kindTag(n)}
+      <span><span class="name">${esc(n.name || '')}</span> <span class="title">${inline(n.title)}</span> ${statusPill(n)} ${recheckTag(n)}${chipsFor(n)}</span>
+      ${crumbs ? `<span class="crumbs">under ${crumbs}</span>` : ''}
+    </div>`;
+  }
+  const undated = s.all.filter(n => !n.at && n !== top).length;
+  if (!items.length) html += `<div class="undated">No dated nodes yet. Add <code>{at:2026-10-18 14:02}</code> to nodes to see them here.</div>`;
+  else if (undated) html += `<div class="undated">${undated} undated node${undated > 1 ? 's' : ''} not shown. Add <code>{at:…}</code> to include them.</div>`;
+  return html;
+}
+
+// ---------- where was I ----------
+
+function lastLine(s) {
+  if (!s.last) return `<div class="empty">No dated activity yet</div>`;
+  return `<div class="last">Last: ${goLink(s.last)} <span class="ago">${ago(s.last.at)}</span><br>
+    <span style="color:var(--muted)">${inline(s.last.title)}</span></div>`;
+}
+
+function resumeLine(s) {
+  if (!s.sessionNode) return '';
+  const sessions = s.sessionNode.attachments.filter(a => a.k === 'session');
+  return `<div class="resume">${sessions.map(a => chip(a, s.sessionNode)).join(' ')}
+    <span style="color:var(--faint);font-size:12px"> on ${goLink(s.sessionNode)}</span></div>`;
+}
+
+function nextBox(s) {
+  if (!s.next.length) return '';
+  return `<div class="next-box">${s.next.map(x =>
+    `<div>${inline(x.text)} <span class="from">(${esc(x.n.name || '')})</span></div>`).join('')}</div>`;
+}
+
+function renderWhere(top) {
+  const s = summarize(top);
+  const list = (items, fmt = n => `${goLink(n)} <span style="color:var(--muted)">${inline(n.title)}</span>`) =>
+    items.length ? `<ul>${items.map(n => `<li>${fmt(n)}</li>`).join('')}</ul>` : `<div class="empty">Nothing</div>`;
+  const prs = n => n.attachments.filter(a => a.k === 'pr').map(a => prChip(a.v, n.repo)).join(' ');
+  let html = `<div class="panel where"><h2>Where was I</h2>${lastLine(s)}${resumeLine(s)}${nextBox(s)}</div>`;
+  if (s.recheck.size) {
+    html += `<div class="panel where"><h2>Re-check</h2>${[...s.recheck].map(([w, ns]) =>
+      `<div class="because">because ${goLink(w)} is wrong</div>${list(ns, n => `${goLink(n)} ${prs(n)}`)}`).join('')}</div>`;
+  }
+  html += `<div class="panel where"><h2>Open questions</h2>${list(s.open, n => `${goLink(n)}${n.suspect ? ' <span class="recheck">⚠</span>' : ''} <span style="color:var(--muted)">${inline(n.title)}</span>`)}</div>`;
+  if (s.unconf.length) html += `<div class="panel where"><h2>Unconfirmed (${s.unconf.length})</h2>${list(s.unconf)}</div>`;
+  if (s.parked.length) html += `<div class="panel where"><h2>Parked</h2>${list(s.parked, goLink)}</div>`;
+  return html;
+}
+
+function renderOverview() {
+  const tops = state.tree.roots.map(t => ({ t, s: summarize(t) }))
+    .sort((a, b) => (b.s.last?.at || 0) - (a.s.last?.at || 0));
+  return `<div class="cards">${tops.map(({ t, s }) => `
+    <div class="card" data-tab="${esc(keyOf(t))}">
+      <div class="meta">${esc(t.name || '')}${s.last ? ` · last ${ago(s.last.at)}` : ''}</div>
+      <h3>${inline(t.title)}</h3>
+      ${s.last ? `<div style="font-size:13px;color:var(--muted)">Last: ${esc(s.last.name || '')} · ${inline(s.last.title)}</div>` : ''}
+      ${nextBox(s)}
+      <div class="pills">
+        ${s.recheckCount ? `<span class="pill warn">⚠ ${s.recheckCount} re-check</span>` : ''}
+        <span class="pill">${s.open.length} open</span>
+        ${s.unconf.length ? `<span class="pill">${s.unconf.length} unconfirmed</span>` : ''}
+        ${s.parked.length ? `<span class="pill">${s.parked.length} parked</span>` : ''}
+      </div>
+      ${resumeLine(s)}
+    </div>`).join('')}</div>`;
+}
+
+// ---------- details ----------
+
+function renderDetail(n) {
+  const crumbs = ancestors(n).map(a => `<span class="go" data-go="${esc(keyOf(a))}">${esc(a.name || '…')}</span>`).join('');
+  let write;
+  if (!n.name) write = '';
+  else if (state.detailText.has(n.name)) {
+    const md = state.detailText.get(n.name);
+    write = window.marked && window.DOMPurify
+      ? `<div class="md">${DOMPurify.sanitize(marked.parse(md))}</div>`
+      : `<pre class="md">${esc(md)}</pre>`;
+  } else if (hasDetail(n)) {
+    write = `<div class="empty">Loading write-up…</div>`;
+  } else {
+    const path = `details/${n.name}.md`;
+    write = `<div class="nodetail">No write-up yet. Put the proof in <code>${esc(path)}</code> next to the tree:
+      the claim, a minimal snippet, permalinks to code and docs, how it was verified, caveats.
+      ${state.served ? '' : '<br>(Write-ups show when served with <code>dt.py serve</code>.)'}</div>`;
+  }
+  const kids = n.children.length
+    ? `<div class="panel where kids"><h2>Led to</h2><ul>${n.children.map(c =>
+        `<li data-select="${esc(keyOf(c))}">${kindTag(c)} ${esc(c.name || '')} <span style="color:var(--muted)">${inline(c.title)}</span> ${statusPill(c)}</li>`).join('')}</ul></div>`
+    : '';
+  return `<div class="panel detail">
+      <div class="head">${crumbs ? `<div class="crumbs">${crumbs}</div>` : ''}<button class="close" data-close title="Close (Esc)">×</button></div>
+      <div class="head">${kindTag(n)} <span class="name">${esc(n.name || '')}</span> ${statusPill(n)} ${recheckTag(n)}
+        ${n.at ? `<span class="when">${fmtDay(n.at)} ${fmtTime(n.at)}</span>` : ''}</div>
+      <h3>${inline(n.title)}</h3>
+      ${chipsFor(n)}
+      ${notesHtml(n, 'margin-left:0;margin-top:8px')}
+      <div class="actions">
+        ${state.view === 'log' ? `<button data-show-tree="${esc(keyOf(n))}">Show in tree</button>` : ''}
+        ${n.name ? `<button data-copy="details/${esc(n.name)}.md">Copy write-up path</button>` : ''}
+      </div>
+      ${write}
+    </div>${kids}`;
+}
+
+async function loadDetail(name) {
+  if (!state.served || !state.details.has(name)) return;
+  try {
+    const r = await fetch(`details/${name}.md`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const text = await r.text();
+    if (state.detailText.get(name) !== text) { state.detailText.set(name, text); render(); }
+  } catch {}
+}
+
+// ---------- page ----------
+
+function currentTop() {
+  if (state.tab === 'overview') return null;
+  return state.tree.roots.find(t => keyOf(t) === state.tab) || null;
+}
+
+function renderTabs() {
+  const tabs = [`<button class="tab${state.tab === 'overview' ? ' active' : ''}" data-tab="overview">Overview</button>`];
+  for (const t of state.tree.roots) {
+    const s = summarize(t);
+    tabs.push(`<button class="tab${state.tab === keyOf(t) ? ' active' : ''}" data-tab="${esc(keyOf(t))}" title="${esc(t.title)}">${esc(t.name || t.title.slice(0, 24))}${
+      s.recheckCount ? `<span class="badge">⚠${s.recheckCount}</span>` : ''}${
+      s.unconf.length ? `<span class="badge unconf">?${s.unconf.length}</span>` : ''}</button>`);
+  }
+  document.getElementById('tabs').innerHTML = tabs.join('');
+}
+
+function render() {
+  if (!state.tree) return;
+  if (state.tab !== 'overview' && !currentTop()) state.tab = 'overview';
+  const selected = state.selected && findByKey(state.selected);
+  if (state.selected && !selected) state.selected = null;
+  const top = currentTop();
+  renderTabs();
+
+  const main = document.getElementById('main');
+  main.classList.toggle('hide-unconf', !state.showUnconf);
+  main.classList.toggle('detail-open', !!selected);
+  main.classList.toggle('wide', !top && !selected);
+
+  let view;
+  if (!top) {
+    view = renderOverview();
+  } else {
+    view = `<div class="goalhead"><div class="t">
+        <div class="name">${kindTag(top)} ${esc(top.name || '')} ${chipsFor(top)}</div>
+        <h3 data-select="${esc(keyOf(top))}" style="cursor:pointer">${inline(top.title)}</h3>
+        ${top.notes.filter(x => !x.next).map(x => `<div class="sub">${inline(x.text)}</div>`).join('')}
+      </div>
+      <div class="seg"><button data-view="tree" class="${state.view === 'tree' ? 'on' : ''}">Tree</button><button data-view="log" class="${state.view === 'log' ? 'on' : ''}">Log</button></div>
+    </div>` + (state.view === 'log' ? renderLog(top) : renderTree(top));
+  }
+  document.getElementById('view').innerHTML = view;
+
+  let side = '';
+  if (state.tree.errors.length) side += `<div class="panel errors"><h2>Parse problems</h2><ul style="padding-left:16px;margin:0">${state.tree.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+  if (selected) side += renderDetail(selected);
+  else if (top) side += renderWhere(top);
+  document.getElementById('side').innerHTML = side;
+  saveState();
+}
+
+// ---------- state & interaction ----------
+
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem('dtree:' + k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('dtree:' + k, JSON.stringify(v)); } catch {} },
+};
+const hash = new URLSearchParams(location.hash.slice(1));
+const state = {
+  text: null, tree: null, served: false,
+  details: new Map(), detailText: new Map(),
+  tab: hash.get('tab') || store.get('tab', 'overview'),
+  view: hash.get('view') || store.get('view', 'tree'),
+  selected: hash.get('node') || null,
+  collapsed: new Set(store.get('collapsed', [])), expanded: new Set(store.get('expanded', [])),
+  hideDone: store.get('hideDone', false), showUnconf: store.get('showUnconf', true),
+};
+function saveState() {
+  store.set('collapsed', [...state.collapsed]); store.set('expanded', [...state.expanded]);
+  store.set('tab', state.tab); store.set('view', state.view);
+  const h = new URLSearchParams({ tab: state.tab, view: state.view });
+  if (state.selected) h.set('node', state.selected);
+  history.replaceState(null, '', '#' + h);
+}
+
+function select(key) {
+  state.selected = key;
+  const n = key && findByKey(key);
+  if (n && n.top) state.tab = keyOf(n.top);
+  render();
+  if (n && n.name) loadDetail(n.name);
+}
+
+function reveal(key) {
+  const n = findByKey(key);
+  if (!n) return;
+  for (const a of ancestors(n)) { state.expanded.add(keyOf(a)); state.collapsed.delete(keyOf(a)); }
+  if (n.unconf && !state.showUnconf) { state.showUnconf = true; document.getElementById('showUnconf').checked = true; }
+  if (n.parent) state.view = 'tree';
+  select(key);
+  const row = document.querySelector(`#n-${CSS.escape(key)} > .row`);
+  if (row) {
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1000);
+  }
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+document.addEventListener('click', e => {
+  if (e.target.closest('a[href]')) return;
+  const t = e.target.closest('[data-toggle],[data-go],[data-copy],[data-tab],[data-view],[data-close],[data-show-tree],[data-select]');
+  if (!t) return;
+  const d = t.dataset;
+  if (d.toggle) {
+    if (isCollapsed(findByKey(d.toggle))) { state.collapsed.delete(d.toggle); state.expanded.add(d.toggle); }
+    else { state.expanded.delete(d.toggle); state.collapsed.add(d.toggle); }
+    render();
+  } else if (d.copy) {
+    navigator.clipboard.writeText(d.copy).then(() => toast('Copied: ' + d.copy), () => toast(d.copy));
+  } else if (d.go) {
+    reveal(d.go);
+  } else if (d.showTree) {
+    state.view = 'tree'; reveal(d.showTree);
+  } else if (d.tab) {
+    state.tab = d.tab; state.selected = null; render(); scrollTo(0, 0);
+  } else if (d.view) {
+    state.view = d.view; render();
+  } else if ('close' in d) {
+    select(null);
+  } else if (d.select) {
+    select(state.selected === d.select ? null : d.select);
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.selected) select(null); });
+
+const hideDone = document.getElementById('hideDone'), showUnconf = document.getElementById('showUnconf');
+hideDone.checked = state.hideDone; showUnconf.checked = state.showUnconf;
+hideDone.onchange = () => { state.hideDone = hideDone.checked; store.set('hideDone', state.hideDone); render(); };
+showUnconf.onchange = () => { state.showUnconf = showUnconf.checked; store.set('showUnconf', state.showUnconf); render(); };
+
+// ---------- loading ----------
+
+function load(text, label) {
+  if (text === state.text) return;
+  state.text = text; state.tree = parse(text);
+  document.getElementById('src').textContent = label;
+  document.getElementById('drop').hidden = true;
+  document.getElementById('main').hidden = false;
+  render();
+}
+
+const src = new URLSearchParams(location.search).get('src') || 'tree.md';
+async function pollDetails() {
+  try {
+    const r = await fetch('details/', { cache: 'no-store' });
+    if (!r.ok) return false;
+    state.served = true;
+    const found = new Map(Object.entries(await r.json()));
+    const changed = found.size !== state.details.size || [...found].some(([k, v]) => state.details.get(k) !== v);
+    if (!changed) return false;
+    for (const [k, v] of found) if (state.details.get(k) !== v) state.detailText.delete(k);
+    state.details = found;
+    return true;
+  } catch { return false; }
+}
+async function poll() {
+  try {
+    const r = await fetch(src, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const text = await r.text();
+    const detailsChanged = await pollDetails();
+    if (detailsChanged && text === state.text) render();
+    load(text, r.headers.get('X-Tree-Path') || src);
+    const sel = state.selected && findByKey(state.selected);
+    if (sel && sel.name) loadDetail(sel.name);
+    return true;
+  } catch { return false; }
+}
+poll().then(ok => {
+  if (ok) { setInterval(poll, 1500); return; }
+  const drop = document.getElementById('drop'); drop.hidden = false;
+  const readFile = f => f && f.text().then(t => load(t, f.name));
+  document.getElementById('file').onchange = e => readFile(e.target.files[0]);
+  addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  addEventListener('dragleave', () => drop.classList.remove('over'));
+  addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); });
+});
+</script>
+</body>
+</html>
