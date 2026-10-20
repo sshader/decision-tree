@@ -4,9 +4,10 @@ A hand-edited outline of *why* you're doing each piece of agent-assisted work,
 with a viewer that shows what to re-check when something turns out wrong.
 
 ```
-python3 dt.py serve examples/tree.md   # viewer, live-reloads as you edit
-python3 dt.py sessions --grep invoice   # find related chats across all dirs (Claude Code + Codex)
-python3 dt.py extract $(python3 dt.py sessions --grep invoice --paths)
+./install.sh                            # puts `dtree` on your PATH and installs the /tree skill
+dtree serve examples/tree.md   # viewer, live-reloads as you edit
+dtree sessions --grep invoice   # find related chats across all dirs (Claude Code + Codex)
+dtree extract $(dtree sessions --grep invoice --paths)
                                         # propose nodes from those sessions together
 ```
 
@@ -38,8 +39,4 @@ Full rules for agents: `skill/tree/rules.md`.
 
 ## Live capture with Claude Code
 
-```
-ln -s "$PWD/skill/tree" ~/.claude/skills/tree
-```
-
-Then run `/tree` in a session (optionally `/tree no-ttl was wrong`).
+After `./install.sh`, run `/tree` in a session (optionally `/tree no-ttl was wrong`).

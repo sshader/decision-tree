@@ -193,7 +193,7 @@ code { font: 12px var(--mono); background: var(--hover); padding: 0 3px; border-
 <div id="drop" hidden>
   <p>Drop a tree <code>.md</code> file here, or pick one.</p>
   <input type="file" id="file" accept=".md,.txt">
-  <p style="font-size:12px">Tip: <code>python3 dt.py serve path/to/tree.md</code> reloads as files change and shows write-ups from <code>details/</code>.</p>
+  <p style="font-size:12px">Tip: <code>dtree serve path/to/tree.md</code> reloads as files change and shows write-ups from <code>details/</code>.</p>
 </div>
 <main id="main" hidden>
   <section id="view"></section>
@@ -516,7 +516,7 @@ function renderDetail(n) {
     const path = `details/${n.name}.md`;
     write = `<div class="nodetail">No write-up yet. Put the proof in <code>${esc(path)}</code> next to the tree:
       the claim, a minimal snippet, permalinks to code and docs, how it was verified, caveats.
-      ${state.served ? '' : '<br>(Write-ups show when served with <code>dt.py serve</code>.)'}</div>`;
+      ${state.served ? '' : '<br>(Write-ups show when served with <code>dtree serve</code>.)'}</div>`;
   }
   const kids = n.children.length
     ? `<div class="panel where kids"><h2>Led to</h2><ul>${n.children.map(c =>

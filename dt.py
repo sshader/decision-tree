@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Decision tree helper.
 
-  dt.py serve [TREE]              serve the viewer, live-reloading TREE
-  dt.py sessions [--grep TEXT]    find transcripts across all projects (Claude Code + Codex)
-  dt.py condense TRANSCRIPT       print a compact version of a transcript
-  dt.py extract TRANSCRIPT...     ask `claude -p` to propose tree updates from one or
+  dtree serve [TREE]              serve the viewer, live-reloading TREE
+  dtree sessions [--grep TEXT]    find transcripts across all projects (Claude Code + Codex)
+  dtree condense TRANSCRIPT       print a compact version of a transcript
+  dtree extract TRANSCRIPT...     ask `claude -p` to propose tree updates from one or
                                   more related sessions, e.g.
-                                  dt.py extract $(dt.py sessions --grep invoice --paths)
+                                  dtree extract $(dtree sessions --grep invoice --paths)
 
 TREE defaults to $DTREE, then ~/.decision-tree/tree.md.
 """
@@ -135,7 +135,7 @@ def condense(path):
     def say(who, text, ts=None):
         if who == "USER" and not meta["first"]:
             meta["first"] = clip(text, 100)
-        stamp = f" [{ts[:16].replace('T', ' ')}]" if who == "USER" and ts else ""
+        stamp = f" [{local_time(ts)}]" if who == "USER" and ts else ""
         out.append(f"{who}{stamp}: {clip(text, 1500)}")
 
     for e in read_jsonl(path):
@@ -180,6 +180,14 @@ def condense(path):
             elif p.get("type") == "function_call_output":
                 meta["prs"].update(PR_URL.findall(str(p.get("output", ""))))
     return meta, out
+
+
+def local_time(ts):
+    """'2026-10-20T06:35:21.555Z' -> '2026-10-20 15:35' in local time, as {at:} expects."""
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return ts[:16].replace("T", " ")
 
 
 def session_ref(meta):
@@ -271,7 +279,7 @@ its main work happened.
 {blocks}
 </transcripts>
 
-Use the [timestamps] on USER lines (UTC) for {{at:...}}. Do not edit any files.
+Use the [timestamps] on USER lines (local time) for {{at:...}}. Do not edit any files.
 If a finding deserves a write-up, include it after the proposals as
 "details/<name>.md:" followed by its contents. Output only proposals, grouped like this:
 
