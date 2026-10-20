@@ -15,22 +15,50 @@ cd ~/src/decision-tree
 ./install.sh
 ```
 
-`install.sh` creates two symlinks, so a `git pull` updates both:
+`install.sh` creates two symlinks, so a `git pull` updates both, and adds a
+Claude Code hook:
 
 - `~/.local/bin/dtree` → `dt.py` (set `BIN_DIR` to put it elsewhere)
 - `~/.claude/skills/tree` → `skill/tree/` (the `/tree` skill)
+- a `dtree hook` entry for `Stop`, `PreCompact` and `SessionEnd` in
+  `~/.claude/settings.json` (your other settings are kept; a backup goes to
+  `settings.json.dtree-backup`). Skip it with `./install.sh --no-hooks`.
 
 Your tree lives at `~/.decision-tree/tree.md`, with write-ups in
 `~/.decision-tree/details/`. Set `DTREE=/path/to/tree.md` to use a different
 file. One tree covers all your repos.
 
-To uninstall, delete the two symlinks.
+To uninstall: `dtree hooks uninstall`, then delete the two symlinks.
 
 ## Daily use
 
 ```sh
 dtree serve                     # open the viewer; it reloads as you edit
 ```
+
+### Automatic proposals (the hook)
+
+While you work in Claude Code, the hook proposes nodes in the background:
+
+- After every ~6 of your prompts (or 2+ prompts and 30 minutes), and when a
+  session compacts or ends, it runs `dtree extract --apply` on what's new in
+  that session. Your session never waits on it.
+- Proposals are merged into the tree as `?` lines (and `details/` write-ups).
+  It only ever adds; it never edits or deletes your lines, and it skips names
+  that already exist.
+- On your next turn, Claude Code shows a one-line note of what was added.
+  Everything is logged in `~/.decision-tree/hook.log`.
+- Many sessions have nothing worth tracking; then nothing is added.
+
+Tune or turn it off:
+
+| | |
+|---|---|
+| `DTREE_HOOK=off` | disable everywhere (e.g. in your shell profile) |
+| `touch .dtree-ignore` | disable for a project (checked in the session's directory and its parents) |
+| `DTREE_HOOK_TURNS=6`, `DTREE_HOOK_MINUTES=30` | how often it runs |
+
+### By hand
 
 At the end of a Claude Code session, run:
 
@@ -51,8 +79,9 @@ dtree sessions --grep "connection pool"       # find related chats in any direct
 dtree extract $(dtree sessions --grep "connection pool" --paths)
 ```
 
-`extract` prints proposals and doesn't change any files. Paste the ones you
-want into the tree.
+`extract` prints proposals and doesn't change any files; paste the ones you
+want into the tree. Or add `--apply` to merge them in as `?` lines, the same way
+the hook does.
 
 ## The tree file
 
@@ -107,7 +136,9 @@ mark the ones that still hold `#kept`.
 dtree serve [TREE] [--port 8765] [--no-open]
 dtree sessions [--grep TEXT]... [--dir TEXT] [--since YYYY-MM-DD] [--limit N] [--paths]
 dtree condense TRANSCRIPT          # compact text version of one transcript
-dtree extract TRANSCRIPT... [--tree TREE] [--print-prompt]
+dtree extract TRANSCRIPT... [--tree TREE] [--apply] [--since LINE] [--print-prompt]
+dtree hooks install|uninstall      # add/remove the hook in ~/.claude/settings.json
+dtree hook                         # the hook itself; reads Claude Code's hook JSON on stdin
 ```
 
 `sessions` searches Claude Code transcripts (`~/.claude/projects`) and Codex
