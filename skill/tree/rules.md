@@ -31,7 +31,15 @@ Only add a node if it passes one of these tests:
 
 - **goal**: only when the human states a new outcome. Phrase it as the
   user-facing requirement ("Invoice totals are never more than a minute
-  stale"), not the work ("add caching"). Never invent goals.
+  stale"), not the work ("add caching"). Never invent goals. A goal also
+  carries the context someone needs to pick it up cold, as notes in the
+  human's own terms (up to 4 lines):
+  - `> why: ...` the problem or pain behind it
+  - `> done when: ...` what success looks like
+  - `> constraints: ...` hard requirements, preferences, things ruled out
+  - `> from: ...` where it came from (a teammate, a ticket, a thread)
+  If the human explained the goal at length, put the fuller brief in
+  `details/<goal-name>.md` (see Write-ups).
 - **q**: a question that was actually investigated and shaped later work. Not
   every lookup.
 - **finding**: a conclusion later work relies on. If it was not verified (read
@@ -50,6 +58,10 @@ note on the node where the human should pick up. Make it concrete enough to
 act on cold a week later. Suggest removing `next:` notes that are now done.
 
 ## Write-ups (proof)
+
+A goal's write-up is its brief: the problem in the human's words, examples
+they gave, what done looks like, constraints. Quote them rather than
+paraphrase where you can.
 
 For a finding other work relies on, the evidence goes in
 `details/<name>.md` next to the tree file, not in the outline. Write one only
@@ -75,7 +87,7 @@ If the node is `?`, start the write-up with `> ? proposed by agent`.
 ## Limits
 
 - At most 5 new nodes per session; 0-3 is typical. Proposing nothing is fine.
-- Titles at most 80 characters. At most one note line per node.
+- Titles at most 80 characters. At most one note line per node (goals: see above).
 - Prefer updating existing nodes over adding new ones. Work often continues
   across chats and directories: if this session continues an existing node,
   attach the session there instead of creating a near-duplicate.

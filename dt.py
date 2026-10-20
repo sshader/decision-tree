@@ -8,7 +8,9 @@
                                   more related sessions, e.g.
                                   dtree extract $(dtree sessions --grep invoice --paths)
 
-TREE defaults to $DTREE, then ~/.decision-tree/tree.md.
+TREE defaults to $DTREE, then ~/.decision-tree/tree.md. Write-ups live in
+details/<name>.md next to it. In Claude Code, run /tree to propose updates
+from the current session. Full guide: README.md next to this script.
 """
 import argparse
 import http.server

@@ -487,6 +487,8 @@ function renderOverview() {
     <div class="card" data-tab="${esc(keyOf(t))}">
       <div class="meta">${esc(t.name || '')}${s.last ? ` · last ${ago(s.last.at)}` : ''}</div>
       <h3>${inline(t.title)}</h3>
+      ${(why => why ? `<div style="font-size:13px;margin:4px 0">${inline(why.text)}</div>` : '')(
+        t.notes.find(x => /^why:/i.test(x.text)) || t.notes.find(x => !x.next))}
       ${s.last ? `<div style="font-size:13px;color:var(--muted)">Last: ${esc(s.last.name || '')} · ${inline(s.last.title)}</div>` : ''}
       ${nextBox(s)}
       <div class="pills">
